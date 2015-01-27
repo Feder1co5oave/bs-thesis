@@ -1,0 +1,38 @@
+\begin{tikzpicture}
+[>=latex',auto,thick]
+
+\tikzstyle{every node}=[shape=circle,draw=black,text=black,inner sep=3pt]
+
+\node (input) at (1,0) [shape=rectangle,rotate=90,minimum width=6cm] {Input data};
+\node (w1) at (4,-2) {map()};
+\node (w2) at (4,0)  {map()};
+\node (w3) at (4,2)  {map()};
+\node (w4) at (8,-1.5) {reduce()};
+\node (w5) at (8,1.5)  {reduce()};
+\node (output) at (11,0) [shape=rectangle,rotate=90, minimum width=5cm] {Output data};
+
+\tikzstyle{every node}=[draw=none]
+\tikzstyle{every edge}+=[->,shorten <=1pt,shorten >=1pt]
+
+\path (2.5,-4) node (p) {partition} edge +(0,1);
+\path (6,-4) node (g) {group by key} edge +(0,2);
+\path (9.5,-4) node (m) {write} edge +(0,1);
+
+\tikzstyle{every node}+=[font=\ttfamily]
+
+\node[yshift=.5cm] at (w3.north east) {$\List\pair{K_2}{V_2}$};
+\node[yshift=.5cm] at (w5.north west) {$\pair{K_2}{\List(V_2)}$};
+\path	(w1-|input.south) edge (w1);
+\path	(w2-|input.south) edge (w2);
+\path	(w3-|input.south) edge node {$\pair{K_1}{V_1}$} (w3);
+\path	(w1) edge (w4);
+\path	(w1) edge (w5);
+\path	(w2) edge (w4);
+\path	(w2) edge (w5);
+\path	(w3) edge (w4);
+\path	(w3) edge (w5);
+\path	(w4) edge (w4-|output.north);
+\path	(w5) edge node {$\List(V_2)$} (w5-|output.north);
+
+\draw[dotted] (6,0) ellipse (.5 and 2);
+\end{tikzpicture}

@@ -1,0 +1,687 @@
+\documentclass[a4paper,11pt,twoside,openright,fleqn]{book}
+\usepackage[left=2.5cm,right=4cm,vmargin=4cm,twoside,head=14pt]{geometry}
+\usepackage[urw-garamond]{mathdesign}
+\usepackage[scaled]{beramono}
+\usepackage[T1]{fontenc}
+\usepackage[italian]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{indentfirst}
+\usepackage{hyperref}
+\usepackage{csquotes}
+\usepackage[sorting=none,firstinits=true,url=false,backend=biber]{biblatex}
+\usepackage{tikz}
+ \usetikzlibrary{arrows}
+ \usetikzlibrary{decorations.fractals}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{array}
+
+\renewcommand{\lstlistlistingname}{Elenco dei sorgenti}
+\renewcommand{\lstlistingname}{Sorgente}
+
+\setlength{\extrarowheight}{2pt}
+
+\widowpenalty=7000
+\clubpenalty=3000
+
+\lstset{
+	language=Java,
+	keywordstyle=\bfseries,
+	morekeywords={},
+	commentstyle=\slshape,
+	showstringspaces=false,
+	basicstyle=\ttfamily\footnotesize,
+	numberstyle=\ttfamily\scriptsize,
+	numbers=none,
+	tabsize=4,
+	breaklines=true,
+	postbreak=\raisebox{0.2ex}[0ex][0ex]{\ensuremath{\hookrightarrow\ }},
+	breakatwhitespace=false,
+	breakindent=4.2pt,
+	breakautoindent=false,
+	columns=fullflexible,
+	captionpos=b,
+	extendedchars=true,
+	xleftmargin=1em,
+	keepspaces=true
+}
+
+\addbibresource{bibliografia.bib}
+
+\hypersetup{
+	pdfborder={0 0 0},
+	pdfauthor={Federico Soave},
+	pdftitle={Tesi di laurea triennale in Ingegneria Informatica: Analisi degli algoritmi di discretizzazione delle Random Forest},
+	pdfkeywords={},
+	pdfcreator={},
+	pdfproducer={},
+}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\List}{\textrm{list}}
+\newcommand{\pair}[2]{\langle #1, #2 \rangle}
+\newcommand{\bigO}{\mathcal{O}}
+
+\pagestyle{fancy}
+\renewcommand\headrulewidth{0pt}
+\fancyhead[RE]{\scshape\nouppercase{\leftmark}}
+\fancyhead[LO]{\scshape\nouppercase{\rightmark}}
+\fancyhead[LE,RO]{\thepage}
+\fancyfoot{}
+
+\makeatletter
+\def\cleardoublepage{\clearpage\if@twoside \ifodd\c@page\else
+\hbox{}
+\thispagestyle{empty}
+\newpage
+\if@twocolumn\hbox{}\newpage\fi\fi\fi}
+\makeatother
+
+\begin{document}
+
+\begin{titlepage}
+\newgeometry{hmargin=4cm,tmargin=3cm,bmargin=1.5cm,centering}
+\centering
+
+\includegraphics[scale=0.25]{img/unipi.pdf}
+\\[0.8cm]
+\includegraphics[scale=0.4]{img/cherubino.pdf}
+\\[1.5cm]
+\begin{large} \sc Dipartimento di Ingegneria dell'Informazione \end{large}
+\\[0.3cm]
+\begin{large} \sc Corso di Laurea in Ingegneria Informatica \end{large}
+\\[3.5cm]
+{\Huge\textsc{Analisi degli algoritmi di discretizzazione delle Random Forest} \par}~
+\\[3.5cm]
+\begin{minipage}{0.45\textwidth}\raggedright
+\begin{large} \textbf{Candidato:}\\[0.3cm] \end{large}
+Federico Soave
+\end{minipage}
+\begin{minipage}{0.45\textwidth}\raggedleft
+\begin{large} \textbf{Relatori:}\\[0.3cm] \end{large}
+Prof. Francesco Marcelloni\\[0.1cm]
+Prof.ssa Beatrice Lazzerini
+\end{minipage}
+
+\vspace{3cm}
+%\rule{8cm}{.3pt}
+\input{img/koch.tex}
+\vspace{0.2cm}\\
+Anno Accademico 2014/2015
+\end{titlepage}
+\restoregeometry
+
+\setlength{\parskip}{1ex plus 0.3ex minus 0.2ex}
+
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+Scopo del mio lavoro di tesi è individuare ed analizzare l'algoritmo di discretizzazione utilizzato nelle librerie Random Forest del progetto Apache Mahout. Le Random Forest vengono eseguite in un framework MapReduce e permettono di classificare grandi quantità di dati in poco tempo, se si hanno a disposizione un numero sufficientemente grande di macchine. Le foreste di decisione vengono costruite a partire dai training set unendo tra loro molti alberi di decisione costruiti in maniera casuale.
+
+Come si vedrà, l'algoritmo di costruzione degli alberi risulta molto simile al classico C4.5 descritto da Quinlan in \cite{Quinlan:1993}. Il processo di discretizzazione è intrinseco all'algoritmo e opera su informazioni locali sfruttando il criterio dell'Information Gain per la selezione degli attributi e delle soglie di separazione. Non è presente, quindi, una fase preliminare nella quale i valori degli attributi reali del dataset vengono discretizzati prima di essere utilizzati. Riguardo a questo, l'algoritmo sarà inserito in una semplice tassonomia degli algoritmi di discretizzazione basata su \cite{Garcia:2013}.
+
+Infine, sarà evidenziato un problema relativo al partizionamento dei training set per il calcolo in parallelo secondo il modello MapReduce. Se il set risulta ordinato rispetto alla classe di appartenenza, l'accuratezza del classificatore viene significativamente abbattuta.
+
+\setlength{\parskip}{3pt}
+
+\tableofcontents
+
+\setlength{\parskip}{1ex plus 0.3ex minus 0.2ex}
+
+\chapter{Introduzione}
+
+Saranno di seguito presentati brevemente alcuni concetti teorici e strumenti software utilizzati durante il lavoro di tesi. Grande importanza rivestono il modello MapReduce e l'implementazione utilizzata, Apache Hadoop, per comprendere la complessità degli algoritmi che vi vengono eseguiti sopra.
+
+\section{Modello di programmazione MapReduce}
+
+\subsection{Breve storia}
+
+Nell'era dei big data si è reso indispensabile riuscire a processare grandi quantità di dati in poco tempo. Raggiunto il limite di capacità di calcolo della singola unità, si è passati al costruire calcolatori più grandi composti da migliaia di unità collegate tra loro da reti di interconnessione. Si sono quindi presentate le difficoltà del programmare anche i più semplici algoritmi in modo da sfruttare la grande potenza di calcolo di tali sistemi distribuiti.
+
+Una delle prime aziende informatiche che arrivò a ideare un sistema che offrisse grande semplicità di programmazione e riuscisse a sfruttare cluster composti da migliaia di macchine connesse tra loro fu Google. Fu nel 2008 che decise di condividere con il mondo scientifico i risultati delle proprie ricerche, che venivano sfruttati già ormai da alcuni anni all'interno dell'azienda.
+
+\subsection{Funzionamento}
+
+\begin{figure}[ht] \centering
+\input{img/mapred.tex}
+\label{fig:mapred}
+\caption{Schema semplificato del modello MapReduce}
+\end{figure}
+
+Il modello di programmazione MapReduce \cite{Dean:2008} si basa sulla scomposizione dell'algoritmo da implementare in due sole funzioni chiamate \code{map()} e \code{reduce()}. I nomi sono ispirati dalle primitive del linguaggio Lisp ma hanno un significato diverso. La funzione \code{map()} riceve come parametro una coppia chiave valore $\pair{K_1}{V_1}$ ed emette una lista di coppie intermedie $\pair{K_2}{V_2}$ di tipo potenzialmente diverso da quello della coppia in ingresso. Le coppie intermedie vengono raggruppate per chiave dal framework utilizzato e mandate alle \code{reduce()}. Ogni funzione \code{reduce()} viene invocata con una lista di coppie chiave valore $\List\pair{K_2}{V_2}$ in cui tutte le chiavi sono uguali, o equivalentemente con una coppia chiave, lista di valori $\pair{K_2}{\List(V_2)}$ ed emette una lista di valori $\List(V_2)$.
+
+\begin{equation}
+\texttt{map} : \pair{K_1}{V_1} \to \List\pair{K_2}{V_2}
+\end{equation}
+\begin{equation}
+\texttt{reduce} : \pair{K_2}{\List(V_2)} \to \List(V_2)
+\end{equation}
+
+\subsection{Esempio: conta le parole}
+
+Un primo esempio molto semplice che può essere presentato per comprendere il MapReduce è quello del \emph{wordcount}. Dato in input uno o più file di testo formati da parole, l'algoritmo calcola, per ogni parola presente, il numero di occorrenze. Per fare questo, la funzione \code{map()} emette delle coppie $\pair w 1$ in cui $w$ è la parola considerata. Le coppie vengono successivamente raggruppate per chiave, ovvero per parola, e mandate ai reducer, che non fanno altro che sommare tutte le occorrenze per ogni parola ed emettere il risultato finale sotto forma di coppia $\pair{\textrm{parola}}{\textrm{occorrenze}}$.
+
+\begin{lstlisting}[float=htp,language=C++,caption=Pseudocodice per l'esempio wordcount]
+map(String key, String value) {
+	// key: nome del documento
+	// value: contenuto del documento
+	for each word w in value
+		EmitIntermediate(w, 1);
+}
+
+reduce(String key, Iterator<int> values) {
+	// key: una parola
+	// values: una lista di occorrenze
+	int result = 0;
+	for each v in values:
+		result += v;
+	Emit(result);
+}
+\end{lstlisting}
+
+\subsection{MapReduce con Apache Hadoop}
+
+Apache Hadoop è l'implementazione open source più utilizzata di MapReduce. Scritto in Java, fornisce un framework per scrivere ed eseguire facilmente programmi MapReduce in cluster formati da migliaia di macchine di tipo consumer. Hadoop stesso si occupa di creare un ambiente affidabile realizzato su macchine non affidabili, impiegando tecniche di replicazione per quanto riguarda il file system distribuito, o approccio a tentativi per l'esecuzione dell'algoritmo, nei casi in cui un worker diventi non più disponibile.
+
+Il file system distribuito HDFS è una componente essenziale di Hadoop, in quanto si occupa di memorizzare e distribuire i dati, siano essi di input, di output o risultati temporanei dell'elaborazione. I metadati relativi al file system sono mantenuti da un server centrale chiamato NameNode e replicato su un secondo server denominato SecondaryNameNode.
+
+I DataNode sono invece i servizi che memorizzano fisicamente i dati sulle memorie di massa locali. I file contenuti in HDFS sono suddivisi in blocchi di dimensione fissa -- tipicamente pari a 64 MB -- e distribuiti tra i vari DataNode con un certo grado di replicazione. Infine, è importante notare che i diversi servizi di DataNode e worker MapReduce possono girare sullo stesso server fisico, rendendo molto veloce lo scambio di dati tra i due.
+
+Un server centrale chiamato JobTracker coordina le elaborazioni dei worker e distribuisce i programmi MapReduce lanciati dagli utenti. I TaskTracker sono i servizi che eseguono l'algoritmo MapReduce vero e proprio e scambiano dati con i DataNode.
+
+Prima di lanciare un job MapReduce, l'utente deve caricare in HDFS i file di input necessari. All'avvio del job, ad ogni mapper viene assegnata una partizione dei dati di input presenti su HDFS, che molto spesso risulta di competenza del DataNode presente sulla stessa macchina fisica del TaskTracker, perché Hadoop cerca di ottimizzare l'esecuzione secondo criteri di località dei dati. Inizialmente, i TaskTracker chiamano la funzione \code{map()} specificata dal programmatore su ogni singola coppia chiave valore presente nei file di input. I risultati delle \code{map()} vengono poi bufferizzati o memorizzati su file temporanei locali. 
+
+Successivamente, nella fase chiamata ``shuffle'', le coppie chiave valore vengono inviate ai reducer per poter essere ordinate e raggruppate per chiave. Al termine dello shuffle, tutti i valori corrispondenti a una certa chiave saranno stati inviati allo stesso reducer. Viene quindi richiamata la funzione \code{reduce()}, fornita dal programmatore, per ogni chiave diversa, che procede ad emettere le coppie chiave valore finali. Tipicamente, i risultati finali vengono scritti separatamente su diversi file in HDFS e vengono utilizzati per un successivo job MapReduce o restituiti all'utente dopo essere stati concatenati.
+
+Mentre il numero di mapper è pari al numero di partizioni di dimensione fissa in cui sono divisi i file di input, il numero di reducer non è vincolato e può essere specificato dal programmatore o lasciato scegliere al sistema. Oltre alla \code{map()} Hadoop supporta due ulteriori funzioni \code{setup()} e \code{cleanup()} che, se sovrascritte dal programmatore, vengono richiamate rispettivamente alla creazione del mapper e al termine delle chiamate a \code{map()}.
+
+\section{Random forest}
+
+Le random forest sono uno strumento di classificazione introdotto per la prima volta nel 2001 da Leo Breiman in \cite{Breiman:2001}, nate da lavori precedenti dello stesso autore volti a migliorare le prestazioni ottenibili da singoli alberi di decisione, introducendo alcune componenti aleatorie nella costruzione degli stessi e un meccanismo di voto per la determinazione del risultato della classificazione.
+
+Oltre alla migliorata accuratezza, le foreste di decisione sono interessanti per la loro efficienza, dovuta al parallelismo sia in fase di costruzione sia in quella di classificazione.
+
+Apache Mahout è una collezione di librerie per il machine learning e include algoritmi di recommendation, clustering e classificazione. Per la classificazione esistono algoritmi basati su Naive Bayes, modelli di Markov nascosti, Stochastic Gradient Descent e Random Forest. Queste ultime sono realizzate utilizzando il framework Hadoop e quindi mediante il modello di programmazione MapReduce.
+
+L'intero processo di classificazione si divide in due fasi ben distinte: il \emph{training} del classificatore e l'utilizzo dello stesso per la classificazione vera e propria.
+
+\section{Discretizzazione}
+
+L'algoritmo di discretizzazione viene impiegato di solito prima della fase di training. Partendo da un set con attributi reali si ottengono solo attributi di tipo numerico discreto (interi) o addirittura nominali. L'associazione tra i valori reali e discreti si ottiene partizionando il dominio continuo e assegnando ad ogni intervallo un valore discreto. Ovviamente, la discretizzazione comporta in generale perdita di informazione e lo scopo di un buon discretizzatore è quello di minimizzare questa perdita di informazione.
+
+I motivi per utilizzare la discretizzazione sono più di uno:
+\begin{itemize}
+\item alcuni classificatori supportano solo valori discreti o nominali, oppure presentano una minore efficacia in presenza di valori reali;
+\item ragionare in termini di valori discreti è più semplice e permette, ad esempio, di testare il valore di un attributo rispetto a tutti i possibili valori assumibili da esso;
+\item la discretizzazione riduce il rumore presente nei dati a disposizione, migliorando l'accuratezza;
+\item la discretizzazione può essere anche utilizzata sui valori di uscita per risolvere un problema di classificazione con un algoritmo di regressione.
+\end{itemize}
+
+\subsection{Tassonomia degli algoritmi di discretizzazione} \label{sec:tassonomia}
+
+Ripropongo qui in maniera semplificata una tassonomia per discretizzatori proposta da \citeauthor{Garcia:2013} in \cite{Garcia:2013}.
+
+Le più importanti proprietà che caratterizzano un algoritmo di discretizzazione sono elencate di seguito:
+\begin{description}
+\item[Statico/Dinamico] si differenzia a seconda del momento in cui il discretizzatore entra in azione. Dinamico se opera mentre stiamo costruendo il classificatore, statico se viene applicato preventivamente sull'intero training set. La maggior parte dei discretizzatori sono statici.
+\item[Univariato/Multivariato] un discretizzatore multivariato considera contemporaneamente tutti gli attributi disponibili nella determinazione dei punti di separazione. Uno univariato considera invece sempre un solo attributo alla volta.
+\item[Supervised/Unsupervised] un discretizzatore supervised tiene in considerazione la classe delle singole istanze nel training set, mentre un unsupervised non l'ha a disposizione o la ignora. L'approccio supervised è più efficace e utilizza le informazioni sulla classe in maniera diversa a seconda del tipo di valutazione usata per determinare i punti di separazione migliori.
+\item[Globale/Locale] discrimina in base alla quantità di dati a disposizione del discretizzatore per fare la scelta del miglior taglio. Un discretizzatore locale ha accesso a solo una parte dei dati, mentre quello globale ha accesso a tutto il set.
+\item[Diretto/Incrementale] un discretizzatore diretto sceglie simultaneamente tutti i punti di separazione degli intervalli, mentre uno incrementale procede aggiungendo punti uno dopo l'altro e deve prevedere una condizione di terminazione.
+\item[Valutazione del taglio] individua la funzione che misura la qualità del taglio. Può essere basata su misure di informazione (entropia), statistiche (correlazione) o essere completamente assente (binning).
+\end{description}
+
+\subsection{Criterio dell'Information Gain} \label{sec:criterioig}
+
+Il concetto di entropia appartiene al campo della teoria dell'informazione. L'entropia di un certo flusso di simboli è definita come il minimo numero necessario di bit, in media, per codificare ogni simbolo, una volta nota la distribuzione di probabilità associata all'alfabeto di simboli. Preso un alfabeto finito formato da $m$ simboli $A_m = \{a_1, a_2, \dots, a_m\}$, ciascuno dei quali ha una probabilità associata $p_i$, la sua entropia è pari a\footnote{Nel caso di $p_i = 0$ si prende $\displaystyle 0 \cdot \log_2 0 = \lim_{p \to 0} p \log_2 p = 0$.}
+
+\begin{equation}
+H(A_m) = -\sum_{i=1}^m p_i \log_2 p_i
+\end{equation}
+
+Il massimo livello di entropia si ottiene da distribuzioni di probabilità uniformi. All'aumentare della variabilità della funzione di distribuzione, l'entropia diminuisce, perché i simboli in arrivo sono più facilmente predicibili. Per un alfabeto finito di $m$ simboli, esiste la seguente relazione:
+
+\begin{equation}
+0 \leq H(A_m) \leq \log_2 m
+\end{equation}
+
+Nel campo della classificazione, vogliamo predire il valore della classe di una istanza avendo informazioni sui suoi attributi. Introduciamo allora il concetto di entropia condizionata, che misura l'impredicibilità di una variabile aleatoria noto il valore di un'altra variabile aleatoria:
+
+\begin{equation}
+H(Y|X) = \sum_{x\in X} P(X=x) \: H(Y|X=x)
+\end{equation}
+
+dove $H(Y|X=x)$ è l'entropia dell'attributo $Y$ calcolata sul sottoinsieme di istanze in cui $X=x$.
+
+L'entropia condizionata della classe di appartenenza noto il valore di uno degli attributi misura la (non) predicibilità della stessa. Intuitivamente, vogliamo minimizzare questo valore per produrre una classe di appartenenza il più possibile accurata. La differenza tra l'entropia della classe senza informazioni sugli attributi e quella noto il valore di un attributo è chiamata information gain:
+
+\begin{equation}
+\textit{Ig}(Y|X) = H(Y) - H(Y|X)
+\end{equation}
+
+e descrive la ``quantità di informazione'' guadagnata utilizzando l'attributo $X$. Intuitivamente, vogliamo selezionare l'attributo che massimizza l'information gain.
+
+Il tipo di informazione che possiamo avere su un attributo potrebbe essere anche del tipo $X \leq x$. Il relativo information gain si ottiene calcolando l'entropia condizionata su ognuno dei sottoinsiemi ottenuti dal dominio dell'attributo $X$:
+
+\begin{equation}
+\textit{Ig}(Y|X:x) = H(Y) - \left[ P(X \leq x) \: H(Y|X \leq x) + P(X > x) \: H(Y|X > x) \right]
+\end{equation}
+
+\chapter{Classificazione con le Random Forest}
+
+Il processo di classificazione si compone in generale di due sottoprocessi in sequenza: la costruzione del modello a partire da dati già classificati (\emph{training}) e la classificazione vera e propria, in cui il modello precedentemente creato viene utilizzato per associare a nuovi dati un'etichetta di classe.
+
+Esiste anche una terza parte detta di valutazione, in cui il modello viene utilizzato per classificare dei dati già classificati, che possono costituire il training set stesso o un insieme diverso, in questo caso detto \emph{test set}. Questo processo permette di verificare l'accuratezza del classificatore. In questo capitolo andremo ad analizzare il comportamento delle Random Forest durante il processo di training e in quello successivo andremo a valutare la correttezza dell'algoritmo in caso di training set particolari.
+
+\section{Implementazioni partial e in-memory}
+
+Nelle Random Forest esistono due diverse implementazioni dell'algoritmo di costruzione della foresta, che si differenziano in quali e quanti dati vengono utilizzati per il training degli alberi.
+
+Consideriamo la struttura generale di un algoritmo scritto per MapReduce e applichiamola ad un processo di training. I dati di input (il training set) vengono partizionati in parti di pari dimensione e assegnati ai mapper. La \code{map()} viene chiamata su ogni singola istanza della partizione del mapper considerato e la copia in memoria centrale. Al termine del ciclo, viene chiamata la \code{cleanup()}, che costruisce un certo numero di alberi in modo random. Questo procedimento descrive come funziona l'implementazione partial.
+
+L'elemento caratterizzante è lo split dei file di input tra tutti i mapper: ogni mapper costruisce gli alberi avendo a disposizione solo un set parziale di dati. Questo alleggerisce il carico del sistema sia in termini di memoria utilizzata che di banda: ogni mapper utilizza il blocco che ha in locale e non ha bisogno di trasferire blocchi dagli altri DataNode. Possono sorgere ovviamente problemi nel caso di dataset non bilanciati, in cui la distribuzione delle classi non è uniforme: presenteremo un esempio nel prossimo capitolo.
+
+Al contrario della partial, l'implementazione in-memory copia l'intero training set su tutti i nodi e da esso ogni mapper costruisce un certo numero di alberi, in parallelo. Le richieste di memoria e banda sono ovviamente maggiori, come anche sarà il tempo di esecuzione richiesto per portare a termine il calcolo. Per entrambe le implementazioni, non vengono utilizzati reducer.
+
+Ho deciso di concentrare lo studio sulla sola implementazione partial delle Random Forest perché risulta significativamente più veloce della in-memory e presenta un modello di calcolo più interessante.
+
+\section{Parametri del training} \label{sec:parametri}
+
+Prendendo come esempio il dataset KDD offerto da \cite{Bache+Lichman:2013}, elenco i comandi lanciati alla console per far partire il job di training e ne descrivo i parametri più importanti. Le linee che iniziano con \# sono commenti.
+
+\begin{lstlisting}[float=hbt,language=,caption=Comandi per lanciare il training e la classificazione,language=bash]
+# 1. Copio i file in HDFS
+hadoop dfs -mkdir KDD
+hadoop dfs -copyFromLocal KDDTrain+_20Percent.arff KDD
+hadoop dfs -copyFromLocal KDDTest+.arff KDD
+
+# 2. Genero un descrittore di file
+hadoop jar mahout/mahout-core-*-job.jar \
+	org.apache.mahout.classifier.df.tools.Describe --path KDD/KDDTrain+_20Percent.arff \
+	--file KDD/KDDTrain+.info --descriptor N 3 C 2 N C 4 N C 8 N 2 C 19 N L
+
+# 3. Training
+hadoop jar mahout/mahout-examples-*-job.jar \
+	org.apache.mahout.classifier.df.mapreduce.BuildForest \
+	-Dmapred.max.split.size=1874231 --data KDD/KDDTrain+_20Percent.arff \
+	--dataset KDD/KDDTrain+.info --selection 5 --partial --nbtrees 100 --output KDD/forest
+
+# 4. Classificazione
+hadoop jar mahout/mahout-examples-*-job.jar \
+	org.apache.mahout.classifier.df.mapreduce.TestForest --input KDD/KDDTest+.arff \
+	--dataset KDD/KDDTrain+.info --model KDD/forest --analyze --mapreduce \
+	--output KDD/predictions
+\end{lstlisting}
+
+Possiamo individuare, all'inizio, i comandi per caricare i file in HDFS. In questo caso, viene creata una cartella apposita \code{KDD/}. Il comando numero 2 serve a generare un ``dataset'', cioè un descrittore di set di dati che contiene essenzialmente i tipi degli attributi dei dati contenuti nei file di input. La stringa finale serve a specificare i tipi, dove \code N corrisponde a un attributo numerico, \code C a uno categorico e \code L all'etichetta di classe. In caso di ripetizioni, è possibile scrivere ``\# X'', dove \# è il numero di ripetizioni e X è \code N o \code C.
+
+Il comando numero 3 avvia la fase di training. I parametri da specificare sono:
+\begin{description}[font=\normalfont\ttfamily]
+\item[-Dmapred.max.split.size] la dimensione, in byte, delle partizioni dei dati di input da distribuire a ciascun mapper. Se non viene specificato, viene presa come dimensione quella dei blocchi HDFS (64 MB).
+\item[-{}-selection] numero di attributi che vengono presi in considerazione (casualmente) per la scelta di uno split.
+\item[-{}-partial] seleziona l'implementazione partial. Se omesso, utilizza quella in-memory.
+\item[-{}-nbtrees] numero totale di alberi da costruire. Ogni mapper costruirà una frazione di questi.
+\end{description}
+
+\section{Costruzione degli alberi}
+
+Il training degli alberi avviene durante la fase di \code{cleanup()} di ciascun mapper. Detto \code{myNbTrees} il numero di alberi che questo mapper deve costruire, ripete un tale numero di volte le seguenti istruzioni: esegui un \emph{bagging} sulle istanze a disposizione, costruisci un albero di decisione sul bag set ed emetti la coppia $\pair{\code{treeId}}{\code{tree}}$.
+
+Il bagging (``bootstrap aggregating'') è una tecnica introdotta da L. Breiman in \cite{Breiman:1996} che consiste nel campionare casualmente un training set per ottenerne una nuova versione. Il campionamento avviene con una probabilità uniforme e con rimpiazzo e generalmente vengono estratti elementi in numero pari al training set originale (nel caso in studio è proprio così). È stato dimostrato che l'impiego del bagging può migliorare l'accuratezza degli alberi di classificazione.
+
+\begin{lstlisting}[float=htp,caption=Codice della fase di \code{cleanup()}]
+void cleanup(Context ctx) {
+	bagging = new Bagging(data);
+	for (treeId = 0; treeId < myNbTrees; treeId++) {
+		Data bag = bagging.bag();
+		Node tree = treeBuilder.build(bag);
+		TreeID key = generateKey(partition, treeId);
+		
+		ctx.write(key, tree);
+	}
+}
+\end{lstlisting}
+
+La costruzione dell'albero avviene secondo l'algoritmo descritto nel \lstlistingname\ \ref{code:defaulttreebuilder}. Esso è ovviamente ricorsivo e avanza dalla radice verso le foglie. Possiamo individuare all'inizio i casi base che producono sempre una foglia (\code{Leaf}):
+\begin{enumerate}
+\item il set è vuoto;
+\item i valori degli attributi non ancora selezionati sono uguali per tutte le istanze del set;
+\item le istanze appartengono tutte alla stessa classe;
+\item non ci sono più attributi da selezionare.
+\end{enumerate}
+
+Nel caso 1 viene restituita una foglia particolare priva di etichetta di classe. Nei casi 2 e 4, l'etichetta viene approssimata selezionando quella con un maggior numero di occorrenze nel set (\code{data.majorityLabel()}). Il caso 3 è il caso ideale in cui la classe è uguale per tutte le istanze.
+
+\begin{lstlisting}[float=hptb,caption=Codice semplificato dell'algoritmo di costruzione dell'albero,label=code:defaulttreebuilder]
+Node build(Data data) {
+    if (data.isEmpty()) return new Leaf(NO_LABEL);
+    if (data.isIdentical(selected)) return new Leaf(data.majorityLabel());
+    if (data.identicalLabel()) return new Leaf(data.get(0).get(labelId);
+    int[] attributes = randomAttributes(m, selected);
+    if (attributes.length == 0) return new Leaf(data.majorityLabel());
+    
+    Split best = null;
+    for (int attr: attributes) {
+        // trova un attributo che massimizza l'information gain
+        Split split = igSplit.computeSplit(data, attr);
+        if (best.getIg() < split.getIg()) best = split;
+    }
+    
+    if (isNumerical(best.getAttr()) {
+        Data loSubset = data.subsetLess(best.getAttr(), best.getSplit());
+        Data hiSubset = data.subsetGreaterEqual(best.getAttr(), best,getSplit());
+        if (loSubset.isEmpty() || hiSubset.isEmpty()) {
+            selected[best.getAttr()] = true;
+        } else { // deseleziona tutti gli attributi numerici
+            temp = selected;
+            selected = cloneCategoricalAttributes(dataset, selected);
+        }
+        
+        Node loChild = build(loSubset);
+        Node hiChild = build(hiSubset);
+        if (temp != null) selected = temp; // ripristina lo stato della selezione
+        else selected[best.getAttr()] = false;
+        return new NumericalNode(best.getAttr(), best.getSplit, loChild, hiChild);
+    } else { // isCategorical(best.getAttr())
+        selected[best.getAttr()] = true;
+        double[] values = data.values(best.getAttr());
+        Node[] children = new Node[values.length];
+        for (int i = 0; i < values.length; i++)
+            children[i] = build(data.subsetEqual(best.getAttr(), values[i]);
+        selected[best.getAttr()] = false;
+        return new CategoricalNode(best.getAttr(), values, children);
+    }
+}
+\end{lstlisting}
+
+Successivamente, vengono presi in considerazione $m$ attributi scelti casualmente tra quelli non ancora selezionati, dove $m$ è pari al parametro \code{-{}-selection} menzionato nella sezione \ref{sec:parametri}. Per ognuno di questi viene calcolato il valore di taglio migliore e il relativo information gain (\code{igSplit.computeSplit()}). Questa procedura sarà descritta più nel dettaglio nella sezione \ref{sec:igsplit}. Viene quindi selezionato l'attributo che produce il massimo information gain -- chiamiamolo $X$. A questo punto l'algoritmo costruisce un nodo di tipo concorde a $X$:
+\begin{description}
+\item[Numerico] viene creato un \code{NumericalNode} il cui scopo è suddividere le istanze in due sottoinsiemi $\{X < \textit{split}\},\ \{X \geq \textit{split}\}$. Ogni nodo numerico ha quindi esattamente due nodi figli, che vengono costruiti ricorsivamente sui due subset.
+\item[Categorico] viene creato un \code{CategoricalNode} che suddivide le istanze in $n$ sottoinsiemi $\{X = c_1\},\ \{X = c_2\},\dots, \{X = c_n\}$, dove $c_i$ sono i valori possibili dell'attributo $X$. Ogni nodo categorico ha quindi un numero variabile di nodi figli, costruiti ricorsivamente.
+\end{description}
+
+\subsection{Reinserimento degli attributi numerici}
+
+È importante capire come lo stato di selezione degli attributi viene modificato e mantenuto tra le chiamate ricorsive. In generale, poiché l'algoritmo è ricorsivo (si tratta di una visita depth-first), alla fine di ogni funzione lo stato deve essere ripristinato al valore che aveva precedentemente.
+
+Nel caso di attributo categorico, una volta selezionato, tutta l'informazione che esso può fornire viene esaurita e quindi sarebbe inutile riutilizzarlo nei nodi figli.
+
+Nel caso di attributo numerico, invece, è possibile che lo stesso attributo venga riutilizzato più volte durante la discesa nell'albero, ma con valori di split diversi. Per questo gli elementi dell'array \code{selected} relativi agli attributi numerici non vengono mai posti a \code{true}, se non nel caso in cui un certo attributo non fornisce alcuna informazione utile. Allora, l'attributo viene marcato come selezionato in modo che non venga utilizzato nei nodi figli, ma potrebbe comunque tornare disponibile nei livelli più profondi dell'albero, successivamente ad altri split.
+
+\subsection{Information gain split} \label{sec:igsplit}
+
+La scelta degli attributi e dei punti di split migliori sono delegati alle classi \code{DefaultIgSplit} e \code{OptIgSplit}. La prima implementa il criterio dell'information gain semplicemente applicando la definizione presentata nella sezione \ref{sec:criterioig}, mentre la seconda è una versione ottimizzata e sarà brevemente spiegata nel prossimo paragrafo.
+
+\begin{lstlisting}[float=htbp,caption=Codice per il calcolo dello split,label=code:computeSplit]
+Split computeSplit(Data data, int attr) {
+    if (isNumerical(attr))
+        return numericalSplit(data, attr);
+    else // isCategorical(attr)
+        return categoricalSplit(data, attr);
+}
+\end{lstlisting}
+
+In entrambe le versioni, il calcolo dell'information gain si differenzia nel caso di attributi numerici e categorici e assume la forma proposta nel \lstlistingname\ \ref{code:computeSplit}. Per un attributo categorico, l'algoritmo deve solo calcolare l'information gain associato all'informazione $X = x_k$. Per un attributo numerico la situazione è più complessa. Riferendomi al \lstlistingname\ \ref{code:defaultIgSplit}, \code{numericalSplit()} prende in considerazione tutti i valori assunti da $X$. Per ciascuno di essi viene calcolato l'information gain associato all'informazione $X < x_k$ o $X \geq x_k$, che deve essere massimizzato scegliendo $x_k$ tra i valori presenti. In corrispondenza del massimo, viene creato uno split sul valore $x_k$ che l'ha generato.
+
+\begin{lstlisting}[float=btp,mathescape,caption=Codice per il calcolo dell'information gain nel caso di attributi numerici e categorici,label=code:defaultIgSplit]
+Split categoricalSplit(Data data, int attr) {
+    double Hyx = 0.0; // $H(Y|X)$
+    for (double value: data.values(attr)) {
+        Data subset = data.subsetEqual(attr, value);
+        Hyx += subset.size() / data.size() * entropy(subset); // $P(X = x) \: H(Y|X = x)$
+    }
+    double ig = entropy(data) - Hyx; // $H(Y) - H(Y|X)$
+    return new Split(attr, ig);
+}
+
+Split numericalSplit(Data, int attr, double value) {
+	double bestIg = -1, bestSplit;
+	for (double value: data.values(attr)) { // tutti i valori di $X$
+		Data loSubset = data.subsetLess(attr, value);
+		Data hiSubset = data.subsetGreaterEqual(attr, value);
+		double Hyx = loSubset.size() / data.size() * entropy(loSubset);
+			Hyx += hiSubset.size() / data.size() * entropy(hiSubset);
+		double ig = entropy(data) - Hyx; // $H(Y) - H(Y|X)$
+		if (ig > bestIg) {
+			bestIg = ig;
+			bestSplit = value;
+		}
+	}
+	return new Split(attr, bestIg, bestSplit);
+}
+\end{lstlisting}
+
+\subsection{Algoritmo ottimizzato per il calcolo dell'information gain}
+
+Come già detto, esiste un algoritmo più efficiente per il calcolo dell'information gain rispetto all'implementazione precedentemente esposta. In questa sezione viene presentato nella sola versione per attributi numerici, perché la sua controparte per attributi categorici può essere ricavata riapplicando gli stessi concetti.
+
+L'ottimizzazione si realizza tramite l'ordinamento dei valori assunti dal parametro selezionato, l'aggiunta di una fase di preprocessing e l'utilizzo di una coppia di tabelle aggiornate incrementalmente ad ogni ciclo dell'algoritmo. Sono introdotte le tre seguenti strutture dati:
+
+\begin{itemize}
+\item \code{counts[i][y]} è pari al numero di istanze per cui $Y = y, X = x_i$;
+\item \code{countGreaterEq[y]} è pari al numero di istanze per cui $Y = y, X \geq x_k$, dove $x_k$ è il $k$-esimo valore ordinato di $X$, che si sta prendendo in considerazione come valore di split;
+\item \code{countLess[y]} è pari al numero di istanze per cui $Y = y, X < x_k$.
+\end{itemize}
+
+Mentre la matrice \code{counts} viene calcolata all'inizio e rimane immutata durante tutta l'esecuzione, l'aggiornamento delle \code{countLess} e \code{countGreaterEqual} avviene ad ogni ciclo secondo le seguenti regole:
+\begin{enumerate}
+\item \code{countLess[y] + counts[k][y]} è pari al numero di istanze per cui $Y = y, X < x_{k+1}$
+\item \code{countGreaterEq[y] - counts[k][y]} è pari al numero di istanze per cui $Y = y, X \geq x_{k+1}$
+\end{enumerate}
+I commenti nel \lstlistingname\ \ref{code:optIgSplit} aiutano a completare la comprensione dell'algoritmo. Poiché alla fine di ogni ciclo i vecchi valori non ci servono più, i nuovi possono essere sostituiti nelle stesse \code{countLess} e \code{countGreaterEq}.
+
+\begin{lstlisting}[float=ptb,mathescape,caption=Codice per il calcolo dell'information gain per attributi numerici nell'implementazione ottimizzata,label=code:optIgSplit]
+Split numericalSplit(Data data, int attr) {
+    double[] values = sort(data.values(attr)); // ordina per valori crescenti
+    computeFrequencies(data, attr, values); // inizializza counts, countLess e countGreaterEq
+    double Hy = entropy(data); // $H(Y)$
+    int best = -1;
+    double bestIg = -1.0;
+    
+    // cicla per ogni valore di $X$ (in ordine crescente)
+    for (int k = 0; k < values.length; k++) {
+        int nLess = DataUtils.sum(countLess);
+        double Hyxl = nLess / data.size() * entropy(countLess, nLess);
+        // nLess / data.size() = $P(X < x_k)$
+        // entropy(countLess, nLess) = $H(Y|X < x_k)$
+        
+        int nGreaterEq = DataUtils.sum(countGreaterEq);
+        double Hxyh = nGreaterEq / data.size() * entropy(countGreaterEq, nGreaterEq);
+        // nGreaterEq / data.size() = $P(X >= x_k)$
+        // entropy(countGreaterEq, nGreaterEq) = $H(Y|X >= x_k)$
+        
+        double ig = Hy - Hyxl - Hyxh;
+        if (ig > bestIg) {
+            bestIg = ig;
+            best = k;
+        }
+        
+        // aggiorna secondo le regole viste
+        DataUtils.add(countLess, counts[k]);
+        DataUtils.dec(countGreaterEq, counts[k]);
+    }
+	return new Split(attr, bestIg, values[best]);
+}
+\end{lstlisting}
+
+\subsubsection{Analisi asintotica della complessità} \label{sec:complessità}
+
+Proviamo a considerare la complessità dell'algoritmo appena descritto. Chiamiamo:
+\begin{itemize}
+\item $R$ il numero di istanze del training set;
+\item $N$ il numero di classi presenti;
+\item $Q$ il numero di valori distinti dell'attributo $X$ considerato.
+\end{itemize}
+
+Certamente $Q \leq R$. Se volessimo considerare il caso peggiore, in cui ogni istanza ha un valore diverso di $X$, dovremmo sostituire $R$ a $Q$.
+
+Allora, l'ordinamento dei valori di $X$ ci costa $\bigO(Q \cdot \log Q)$, senza contare il costo della procedura \code{values()}, che se realizzata tramite un HashSet dovrebbe costare $\bigO(R \cdot \log R)$. Il passaggio di preprocessing (\code{computeFrequencies()}) è un po' più difficile. Presentiamo il relativo codice nel \lstlistingname\ \ref{code:computeFrequencies}.
+
+\begin{lstlisting}[float=htbp,mathescape,label=code:computeFrequencies,caption=Fase di preprocessing]
+void computeFrequencies(Data data, int attr, double[] values) {
+	for (int i = 0; i < data.size(); i++) { // $R$ cicli
+		Instance instance = data.get(i);
+		counts[ArrayUtils.indexOf(values, instance.get(attr))][instance.getLabel()]++;
+		countAll[(int) dataset.getLabel(instance)]++;
+	}
+}
+\end{lstlisting}
+
+%\begin{lstlisting}[float=hptb,mathescape,caption=Codice per il calcolo dell'entropia nell'implementazione ottimizzata]
+%double entropy(int[] counts, int dataSize) {
+%	double entropy = 0.0;
+%	for (int count : counts) {
+%		if (count == 0) continue; // $0 \cdot \log 0 = 0$
+%		double p = count / dataSize;
+%		entropy += -p * Math.log(p) / LOG2;
+%    }
+%    return entropy;
+%}
+%\end{lstlisting}
+
+Mentre il numero di cicli è fissato a $R$, poiché \code{indexOf()} è realizzata tramite un ciclo che scorre l'array passato fino a trovare il valore cercato (in questo caso il valore dell'attributo dell'istanza), il tempo (medio) necessario per completare la chiamata a \code{indexOf()} dipende dalla funzione di distribuzione dei valori di $X$. Assumendo una distribuzione uniforme e ricordando che abbiamo chiamato $Q$ il numero dei valori distinti di $X$, si ha che il tempo medio per la \code{indexOf()} risulta
+
+\begin{equation}
+\frac 1 Q \sum_{i = 1}^Q i = \frac 1 Q \: \frac{Q (Q + 1)}{2} = \frac{Q + 1}{2} = \bigO(Q) %\footnotemark
+\end{equation}
+%\footnotetext{utilizzo qui la notazione $\bigO$-grande in modo informale per descrivere l'ordine di grandezza (nel caso medio).}
+
+Il costo totale per la fase di preprocessing è quindi $\bigO(R \cdot Q)$.
+
+Volendo migliorare questo risultato, basterebbe notare che, essendo il vettore dei valori di $X$ ordinato, si potrebbe realizzare la \code{indexOf()} con una ricerca dicotomica, che costerebbe $\bigO(\log Q)$ ad ogni chiamata. Il costo della fase di preprocessing sarebbe allora $\bigO(R \cdot \log Q)$.
+
+Il ciclo \code{for} del \lstlistingname\ \ref{code:optIgSplit} si ripete esattamente $Q$ volte, mentre nel blocco di codice interno tutte le operazioni sono $\bigO(1)$, tranne le \code{sum()}, \code{add()}, \code{dec()} ed \code{entropy()}, che costano tutte $\bigO(N)$. Complessivamente, allora, si ha complessità $\bigO(Q \cdot N)$ per il corpo principale dell'algoritmo.
+
+\section{Caratterizzazione del discretizzatore delle R.F.} \label{sec:caratterizzazione}
+
+Seguendo la tassonomia presentata nella sezione \ref{sec:tassonomia}, individuiamo le caratteristiche del discretizzatore studiato:
+
+\begin{description}
+\item[Dinamico] il discretizzatore agisce durante il processo di costruzione dell'albero;
+\item[Univariato] nel processo di selezione dell'attributo da utilizzare vengono considerati quelli selezionabili ma il punto di split viene calcolato considerandone uno solo ala volta;
+\item[Supervised] il calcolo dell'information gain utilizza informazioni della classe delle istanze;
+\item[Locale] oltre al partizionamento dei dati dovuto al MapReduce (nell'implementazione partial), il processo di discretizzazione viene applicato anche ai livelli più profondi dell'albero di decisione, in cui il set di dati è stato partizionato ai nodi superiori;
+\item[Incrementale] gli split su un singolo attributo vengono aggiunti scendendo in profondità nell'albero;
+\item[Valutazione del taglio] utilizza il criterio dell'information gain.
+\end{description}
+
+Facendo sempre riferimento a \cite{Garcia:2013} e andando a vedere quali algoritmi di discretizzazione condividono le caratteristiche sopracitate, emergono i seguenti quattro: Chou91, ID3, MODLEM, ITFP. In particolare l'ID3 \cite{Quinlan:1993} (\emph{Iterative Dichotomiser 3}) è uno dei più studiati dalla comunità scientifica e il predecessore del più famoso C4.5 \cite{Quinlan:1996}.
+
+%Ad un'indagine superficiale, sembra che l'algoritmo di training delle Random Forest sia proprio ispirato a ID3 e C4.5.
+
+\chapter{Prestazioni con training set particolari}
+\label{sec:casopatologico}
+
+Riguardando il procedimento seguito da Mahout per la generazione della foresta con l'implementazione partial appare chiara una debolezza relativa al partizionamento del training set. Il file di input viene suddiviso da HDFS in blocchi di dimensione fissa (è possibile definire la dimensione dei blocchi per ciascun file), ottenuti ``tagliando'' il file originale in posizioni multiple della dimensione del blocco. Hadoop si occupa autonomamente di preservare interi i record logici che costituiscono i file, che nel nostro caso di studio sono linee (ogni linea rappresenta un'istanza).
+
+Poi, ognuna delle partizioni viene utilizzata per costruire un classificatore separato, che solo al termine della fase di training sarà unito agli altri. Risulta chiaro quindi che ciascun classificatore viene costruito su una versione \emph{parziale} dei dati (come dice il nome dell'implementazione stessa), che non necessariamente si rivela ``rappresentativa'' dell'intero set. Se tutte le partizioni contenessero training set non rappresentativi, potremmo ottenerne solamente classificatori non corretti. Il principio di funzionamento delle random forest potrebbe forse mitigare questa mancanza, ma è tutto da dimostrare.
+
+Per verificare le prestazioni delle Random Forest nelle condizioni sopra descritte, si è provato a generare un training set ad-hoc che se utilizzato correttamente dovrebbe restituire un classificatore praticamente perfetto. Si vedrà che non è così.
+
+\section{Generazione del training set}
+
+Un esempio molto semplice di training set partizionato in subset non rappresentativi è così costituito:
+\begin{itemize}
+\item alcuni attributi di solo rumore (generati in modo casuale);
+\item un attributo univocamente correlato alla classe di appartenenza;
+\item due sole classi possibili;
+\item istanze delle due classi in egual numero, divise perfettamente nella prima e seconda metà del file.
+\end{itemize}
+
+Un set con questa caratteristiche potrebbe assomigliare qualitativamente a quello nel \lstlistingname\ \ref{code:setpatologico}, in cui il primo attributo è significativo, i restanti nove sono rumore e le classi sono suddivise perfettamente nella prima e seconda metà del training set.
+
+\lstinputlisting[float=hbtp,language=,label=code:setpatologico,caption=Esempio di set non rappresentativo]{training-set.arff}
+
+Riporto un semplice programma in Javascript utilizzato durante i miei test, che genera training set come quello di esempio. In particolare, vengono generate $200\, 000$ istanze, nelle quali il primo attributo è scelto casualmente nell'intervallo $(0,1]$ per le istanze di A e in $(1,2]$ per quelle di B, che dovrebbe permettere di classificare con una percentuale di successo vicino al 100\%. Lo standard output va ridirezionato nel file che dovrà contenere il training set.
+
+\lstinputlisting[float=thpb,caption=Codice del programma utilizzato per generare il training set di test,morekeywords={var,function}]{gen-unshuffled.js}
+
+La dimensione del file generato è di circa 12 MB ($(6 \times 10 + 2) \times 200\, 000 = 12\, 400\, 000$ Byte). È importante evidenziare che al fine di suddividere perfettamente il file su due mapper diversi deve essere specificata una dimensione delle partizioni pari alla metà della dimensione del file. Per fare questo va utilizzato il parametro \code{-Dmapred.max.split.size} a linea di comando, come si è visto nella sezione \ref{sec:parametri}.
+
+\section{Risultato dei test}
+
+Come riportato in tabella \ref{tab:risultati}, l'accuratezza ottenuta sul training set stesso è del 62.7\%, un indice di gravi difetti nel classificatore costruito, soprattutto una volta fatte le considerazioni nella sezione precedente sulla natura del set.
+
+\begin{lstlisting}[float=htbp,language=bash,label=code:test-half,caption=Lancio del primo test]
+# 1. genera il training set e copialo in HDFS
+node gen-unshuffled.js > unshuffled.arff
+hadoop dfs -copyFromLocal unshuffled.arff .
+
+# 2. genera il descrittore di dataset
+hadoop jar mahout/mahout-core-*-job.jar \
+	org.apache.mahout.classifier.df.tools.Describe --path unshuffled.arff \
+	--file dataset.info --descriptor 10 N L
+
+# 3. training
+hadoop jar mahout/mahout-examples-*-job.jar \
+	org.apache.mahout.classifier.df.mapreduce.BuildForest \
+	-Dmapred.max.split.size=6100000 --data unshuffled.arff --dataset dataset.info \
+	--selection 5 --partial --nbtrees 100 --output forest-half
+
+# 4. valutazione
+hadoop jar mahout/mahout-examples-*-job.jar \
+	org.apache.mahout.classifier.df.mapreduce.TestForest --input unshuffled.arff \
+	--dataset dataset.info --model forest-half --analyze --mapreduce --output predictions-half
+\end{lstlisting}
+
+\subsection{Variare il parametro mapred.max.split.size}
+
+A conferma delle cause che hanno portato al pessimo classificatore del test precedente, ho provato a modificare il parametro di dimensione massima dei blocchi distribuiti ai mapper, impostandolo a un terzo della dimensione del file di input. I comandi sono uguali al precedente esempio, ad eccezione di \code{-Dmapred.max.split.size=4140000}, che ha come conseguenza quella di dividere il set in tre partizioni, delle quali:
+\begin{enumerate}
+\item la prima è formata da sole istanze di A;
+\item la seconda è formata istanze di A e B in egual numero;
+\item la terza è formata da sole istanze di B.
+\end{enumerate}
+
+Ci si aspetterebbe che i mapper 1 e 3 costruiscano dei classificatori scorretti e il 2 uno corretto per il problema considerato. Il risultato finale del 99.98\% di accuratezza è corretto e possiamo concludere che i due classificatori scorretti non hanno influenzato negativamente i risultati del 2, a conferma dell'ipotesi fatta che le random forest mitighino problemi di sbilanciamento tra le partizioni del training set.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{cccc}
+\firsthline
+\bfseries split ratio & \bfseries shuffled & \bfseries accuratezza & \bfseries \# nodi \\ \hline
+1/2 & no & 62.73\% & 204 \\
+1/3 & no & 99.98\% & 830 \\
+1 (in-mem) & no & 100\% & 4304 \\
+1/2 & sì & 99.99\% & 3074 \\
+\lasthline
+\end{tabular}
+\caption{Risultati dei test} \label{tab:risultati}
+\end{table}
+
+\section{Possibili soluzioni}
+
+La soluzione più semplice per il problema specifico del training set utilizzato è quella di rimescolare le istanze in modo casuale. Se il training set è sul file system locale e non supera qualche GB di dimensione, è consigliabile utilizzare il programma `\code{shuf}' incluso nelle distribuzioni GNU, nel seguente modo:
+
+\code{shuf unshuffled.arff -o shuffled.arff}
+
+Un'alternativa sarebbe utilizzare `\code{sort}' con l'opzione \code{-{}-random-sort}, ma risulta significativamente più lento di \code{shuf}. Per mescolare il training set di esempio, di circa 12 MB, \code{shuf} impiega meno di 200 ms, mentre \code{sort} più di 20 secondi.
+
+Il risultato del test utilizzando un training set rimescolato (``shuffled'') è inserito in tabella \ref{tab:risultati} e si può vedere che è corretto.
+
+Per training set molto grandi o già presenti su HDFS, conviene utilizzare un programma MapReduce che rimescoli le linee dei file tra i diversi DataNode.
+
+Ulteriori approfondimenti sui problemi collegati alla classificazione con le Random Forest in presenza di training set sbilanciati si possono trovare in \cite{delRio:2014}. In particolare, sono state studiate diverse tecniche in grado di gestire correttamente training set in cui le istanze di una classe sono in numero molto minore rispetto alle altre classi, situazione abbastanza ricorrente in applicazioni reali come ad esempio le diagnosi mediche.
+
+\chapter*{Conclusioni}
+\addcontentsline{toc}{chapter}{Conclusioni}
+
+Nei capitoli precedenti si è visto come il modello MapReduce possa essere utilizzato per realizzare algoritmi di classificazione scalabili. Si è inoltre visto che cos'è la discretizzazione e perché viene utilizzata per la costruzione di classificatori con training set contenenti valori di tipo reale. In particolare sono state prese in esame le librerie Random Forest di Apache Mahout: si è visto come possono essere utilizzate per il training e la classificazione e le differenze sostanziali tra le due implementazioni partial e in-memory.
+
+L'algoritmo di costruzione degli alberi di classificazione è a comune tra le implementazioni sopracitate. Analizzandolo sono riuscito a individuare la porzione di codice che costituisce il processo di discretizzazione vero e proprio, che risulta quindi fare parte dell'algoritmo di training. Discretizzatori di questo tipo vengono detti \emph{dinamici}. Utilizzando una tassonomia per discretizzatori ho individuato le altre caratteristiche che contraddistinguono quello in esame, presentate nella sezione \ref{sec:caratterizzazione}. Nella sezione \ref{sec:criterioig} è stato presentato il concetto di information gain, utilizzato dal discretizzatore come criterio di scelta dei punti di split.
+
+La discretizzazione avviene nel momento in cui deve essere selezionato l'attributo da utilizzare come criterio di classificazione. Tra gli attributi considerati, viene scelto quello con il massimo information gain, che nel caso di attributi di tipo numerico viene calcolato suddividendo l'insieme delle istanze in due sottoinsiemi $\{X < x\}$ e $\{X \geq x\}$, dove $x$ è il punto di taglio che produce il massimo information gain, tra tutti i valori distinti di $X$.
+
+Il calcolo dell'information gain ha due implementazioni diverse, una delle quali promette di essere più veloce dell'altra ed è stata analizzata nella sola versione per attributi numerici. Nella sezione \ref{sec:complessità} ne ho presentato un'analisi asintotica della complessità in funzione del numero dei record, dei valori distinti dell'attributo selezionato e delle classi presenti. È risultato che la fase di preprocessing che precede la computazione vera e propria ha un complessità sub-ottimale che potrebbe essere facilmente migliorata impiegando una ricerca dicotomica invece che lineare.
+
+Infine, nel capitolo \ref{sec:casopatologico} ho studiato il comportamento dell'implementazione partial delle Random Forest in presenza di training set ordinati per etichetta. Si è visto che in casi particolari il classificatore prodotto non risulta corretto a causa del partizionamento dei file di input. Una semplice soluzione a questo problema potrebbe essere quella di rimescolare in modo casuale i record del training set sul file system locale, o direttamente in HDFS impiegando un job MapReduce appositamente scritto.
+
+\makeatletter\@openrightfalse\makeatother
+
+\lstlistoflistings
+
+\printbibliography
+
+\end{document}
